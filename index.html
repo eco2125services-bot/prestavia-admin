@@ -1,0 +1,941 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PrestaVía Admin</title>
+<meta name="description" content="Panel interno de administración de PrestaVía — usuarios, cobranzas, contratos e indicadores.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:wght@500;600;700&family=Public+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* Mismo sistema de tokens que el sitio público, en clave de "panel de
+   trabajo": la jerarquía vive en el layout (sidebar + contenido), no en
+   grandes titulares — aquí se escanea y se opera, no se lee de corrido. */
+:root{
+  --bg:#0B1F1A; --bg-alt:#10281F; --bg-raised:#142E24;
+  --fg:#EAF2EC; --fg-muted:#9FB8AC;
+  --accent:#D9A441; --accent-fg:#1B1206; --accent-2:#2F9E7A;
+  --border:rgba(234,242,236,0.14); --border-strong:rgba(234,242,236,0.26);
+  --danger:#E2725B; --warn:#D9A441; --ok:#2F9E7A;
+  --font-display:'Fraunces',Georgia,serif;
+  --font-body:'Public Sans',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+  --font-mono:'IBM Plex Mono','SF Mono',Consolas,monospace;
+  color-scheme: dark;
+}
+:root[data-theme="light"]{
+  --bg:#F4F7F5; --bg-alt:#FFFFFF; --bg-raised:#FFFFFF;
+  --fg:#0F241D; --fg-muted:#4B6459;
+  --accent:#A8721B; --accent-fg:#FFF9EE; --accent-2:#1F7A5C;
+  --border:rgba(15,36,29,0.12); --border-strong:rgba(15,36,29,0.22);
+  --danger:#B23E27; --warn:#A8721B; --ok:#1F7A5C;
+  color-scheme: light;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;height:100%;}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased;}
+[hidden]{display:none!important;}
+button,input,select,textarea{font-family:inherit;}
+.num{font-family:var(--font-mono);font-variant-numeric:tabular-nums;}
+a{color:inherit;}
+::selection{background:var(--accent);color:var(--accent-fg);}
+
+/* ---------- login screen ---------- */
+#loginScreen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px;}
+.login-card{width:100%;max-width:380px;background:var(--bg-raised);border:1px solid var(--border);border-radius:14px;padding:34px;}
+.login-logo{display:flex;align-items:center;gap:10px;font-family:var(--font-display);font-weight:700;font-size:19px;margin-bottom:4px;}
+.login-logo-mark{width:28px;height:28px;border-radius:7px;background:linear-gradient(155deg,var(--accent-2),var(--accent));display:flex;align-items:center;justify-content:center;flex-shrink:0;}
+.login-sub{color:var(--fg-muted);font-size:13.5px;margin:4px 0 26px;}
+form{display:flex;flex-direction:column;gap:14px;}
+label{font-size:12.5px;font-weight:600;color:var(--fg-muted);display:flex;flex-direction:column;gap:6px;}
+input,select{font-size:14.5px;color:var(--fg);background:var(--bg-alt);border:1px solid var(--border-strong);border-radius:8px;padding:10px 12px;width:100%;}
+:root[data-theme="light"] input,:root[data-theme="light"] select{background:var(--bg);}
+button{font-weight:700;font-size:14.5px;border-radius:8px;border:1px solid transparent;padding:11px 18px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;gap:8px;transition:opacity .12s,border-color .12s;}
+button:active{transform:translateY(1px);}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent-2);outline-offset:2px;}
+.btn-primary{background:var(--accent);color:var(--accent-fg);}
+.btn-primary:hover{opacity:.9;}
+.btn-ghost{background:transparent;color:var(--fg);border-color:var(--border-strong);}
+.btn-ghost:hover{border-color:var(--accent-2);}
+.btn-danger{background:transparent;color:var(--danger);border-color:var(--danger);}
+.btn-sm{padding:7px 12px;font-size:13px;}
+button[disabled]{opacity:.5;cursor:not-allowed;}
+.form-msg{font-size:13px;padding:10px 12px;border-radius:8px;border:1px solid var(--border-strong);display:none;line-height:1.5;}
+.form-msg.show{display:block;}
+.form-msg.ok{border-color:var(--ok);background:color-mix(in srgb, var(--ok) 12%, transparent);}
+.form-msg.err{border-color:var(--danger);background:color-mix(in srgb, var(--danger) 12%, transparent);}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid color-mix(in srgb, currentColor 30%, transparent);border-top-color:currentColor;animation:spin .7s linear infinite;flex-shrink:0;}
+@keyframes spin{to{transform:rotate(360deg);}}
+@media (prefers-reduced-motion:reduce){.spin{animation-duration:1.4s;}}
+
+/* ---------- app shell ---------- */
+#app{display:flex;min-height:100vh;}
+.sidebar{width:220px;flex-shrink:0;background:var(--bg-alt);border-right:1px solid var(--border);display:flex;flex-direction:column;position:sticky;top:0;height:100vh;}
+.sidebar-head{padding:20px 18px;display:flex;align-items:center;gap:9px;font-family:var(--font-display);font-weight:700;font-size:17px;border-bottom:1px solid var(--border);}
+.sidebar-head .mark{width:24px;height:24px;border-radius:6px;background:linear-gradient(155deg,var(--accent-2),var(--accent));flex-shrink:0;}
+.navlist{list-style:none;margin:0;padding:12px;display:flex;flex-direction:column;gap:2px;flex:1;overflow-y:auto;}
+.navlist button{all:unset;box-sizing:border-box;display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;font-size:13.5px;font-weight:600;color:var(--fg-muted);cursor:pointer;width:100%;}
+.navlist button:hover{background:color-mix(in srgb, var(--fg) 6%, transparent);color:var(--fg);}
+.navlist button.active{background:color-mix(in srgb, var(--accent-2) 16%, transparent);color:var(--fg);}
+.navlist button .badge{margin-left:auto;font-family:var(--font-mono);font-size:10.5px;background:var(--accent);color:var(--accent-fg);border-radius:99px;padding:1px 7px;}
+.sidebar-foot{padding:14px;border-top:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.avatar{width:32px;height:32px;border-radius:8px;background:linear-gradient(155deg,var(--accent-2),var(--accent));display:flex;align-items:center;justify-content:center;font-family:var(--font-mono);font-weight:700;font-size:12px;color:#1B1206;flex-shrink:0;}
+.sidebar-foot .who{flex:1;min-width:0;}
+.sidebar-foot .name{font-size:12.5px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.sidebar-foot .role{font-size:11px;color:var(--fg-muted);font-family:var(--font-mono);}
+
+.main{flex:1;min-width:0;display:flex;flex-direction:column;}
+.topbar{position:sticky;top:0;z-index:10;background:color-mix(in srgb, var(--bg) 85%, transparent);backdrop-filter:blur(8px);border-bottom:1px solid var(--border);padding:14px 26px;display:flex;align-items:center;justify-content:space-between;gap:14px;}
+.topbar h1{font-family:var(--font-display);font-size:19px;font-weight:600;margin:0;}
+.topbar-actions{display:flex;align-items:center;gap:8px;}
+.icon-btn{background:transparent;border:1px solid var(--border-strong);width:34px;height:34px;padding:0;border-radius:8px;color:var(--fg);}
+.content{padding:24px 26px 60px;max-width:1180px;width:100%;margin:0 auto;}
+.menu-toggle{display:none;}
+@media (max-width:880px){
+  .sidebar{position:fixed;left:0;top:0;z-index:50;transform:translateX(-100%);transition:transform .2s ease;box-shadow:0 0 0 100vmax rgba(0,0,0,0);}
+  .sidebar.open{transform:translateX(0);box-shadow:0 0 40px rgba(0,0,0,.4);}
+  .menu-toggle{display:inline-flex;}
+  .content{padding:18px 16px 50px;}
+  .topbar{padding:12px 16px;}
+}
+
+.view{display:none;}
+.view.active{display:block;}
+.view-head{margin-bottom:22px;}
+.view-head h2{font-family:var(--font-display);font-size:22px;font-weight:600;margin:0;}
+.view-head p{color:var(--fg-muted);font-size:13.5px;margin:6px 0 0;max-width:62ch;}
+
+/* stat tiles */
+.stats-row{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px;}
+@media (max-width:760px){.stats-row{grid-template-columns:repeat(2,1fr);}}
+.stat-tile{background:var(--bg-raised);border:1px solid var(--border);border-radius:12px;padding:18px;min-width:0;}
+.stat-tile .label{font-size:11.5px;color:var(--fg-muted);font-family:var(--font-mono);text-transform:uppercase;letter-spacing:.05em;}
+.stat-tile .value{font-family:var(--font-mono);font-size:26px;font-weight:600;margin-top:8px;}
+.stat-tile .value.warn{color:var(--warn);}
+.stat-tile .value.ok{color:var(--ok);}
+
+/* cards / sections */
+.card{background:var(--bg-raised);border:1px solid var(--border);border-radius:12px;margin-bottom:20px;overflow:hidden;}
+.card-head{padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.card-head h3{font-size:14.5px;font-weight:700;margin:0;}
+.card-head .sub{font-size:12px;color:var(--fg-muted);margin-top:2px;}
+.card-body{padding:18px 20px;}
+.card-body.pad0{padding:0;}
+
+.table-wrap{overflow-x:auto;}
+table{width:100%;border-collapse:collapse;min-width:560px;}
+th,td{text-align:left;padding:11px 20px;font-size:13px;border-bottom:1px solid var(--border);white-space:nowrap;}
+th{font-family:var(--font-mono);font-size:10.5px;text-transform:uppercase;letter-spacing:.05em;color:var(--fg-muted);background:color-mix(in srgb, var(--fg) 4%, transparent);position:sticky;top:0;}
+tr:last-child td{border-bottom:none;}
+td.num,th.num{font-family:var(--font-mono);}
+td.wrap-cell{white-space:normal;max-width:220px;}
+.empty-state{padding:36px 20px;text-align:center;color:var(--fg-muted);font-size:13.5px;}
+.row-actions{display:flex;gap:6px;flex-wrap:wrap;}
+
+.chip{font-family:var(--font-mono);font-size:10.5px;padding:3px 8px;border-radius:99px;border:1px solid var(--border-strong);white-space:nowrap;display:inline-block;}
+.chip.ok{color:var(--ok);border-color:var(--ok);}
+.chip.warn{color:var(--warn);border-color:var(--warn);}
+.chip.danger{color:var(--danger);border-color:var(--danger);}
+.chip.muted{color:var(--fg-muted);}
+
+.filter-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center;padding:14px 20px;border-bottom:1px solid var(--border);}
+.filter-row select,.filter-row input{width:auto;min-width:160px;}
+
+/* inline edit / modal-ish panel */
+.inline-form{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;padding:16px 20px;border-top:1px dashed var(--border);background:color-mix(in srgb, var(--fg) 3%, transparent);}
+@media (max-width:600px){.inline-form{grid-template-columns:1fr;}}
+.inline-form .full{grid-column:1/-1;}
+.inline-form .actions{grid-column:1/-1;display:flex;gap:8px;justify-content:flex-end;}
+
+.toast-stack{position:fixed;bottom:18px;right:18px;z-index:200;display:flex;flex-direction:column;gap:8px;max-width:340px;}
+.toast{background:var(--bg-raised);border:1px solid var(--border-strong);border-radius:10px;padding:12px 14px;font-size:13px;box-shadow:0 8px 24px rgba(0,0,0,.25);}
+.toast.ok{border-color:var(--ok);}
+.toast.err{border-color:var(--danger);}
+
+.hint{font-size:12px;color:var(--fg-muted);}
+</style>
+</head>
+<body>
+
+<!-- ============== LOGIN ============== -->
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="login-logo">
+      <span class="login-logo-mark"></span>
+      PrestaVía Admin
+    </div>
+    <p class="login-sub">Acceso exclusivo para administradores de la plataforma.</p>
+    <form id="formLogin">
+      <label>Correo electrónico<input type="email" name="email" required placeholder="admin@prestavia.com"></label>
+      <label>Contraseña<input type="password" name="clave" required placeholder="••••••••"></label>
+      <div class="form-msg" id="msgLogin"></div>
+      <button type="submit" class="btn-primary"><span class="btn-label">Entrar</span></button>
+    </form>
+  </div>
+</div>
+
+<!-- ============== APP ============== -->
+<div id="app" hidden>
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-head"><span class="mark"></span>PrestaVía Admin</div>
+    <ul class="navlist">
+      <li><button data-view="resumen" class="active">Resumen</button></li>
+      <li><button data-view="usuarios">Usuarios</button></li>
+      <li><button data-view="prestamistas">Activación prestamistas<span class="badge" id="badgePrestamistas" hidden></span></button></li>
+      <li><button data-view="comisiones">Comisiones<span class="badge" id="badgeComisiones" hidden></span></button></li>
+      <li><button data-view="desembolsos">Desembolsos<span class="badge" id="badgeDesembolsos" hidden></span></button></li>
+      <li><button data-view="pagos">Cuotas reportadas<span class="badge" id="badgePagos" hidden></span></button></li>
+      <li><button data-view="operaciones">Operaciones</button></li>
+      <li><button data-view="contratos">Contratos</button></li>
+      <li><button data-view="indicadores">Ingresos e indicadores</button></li>
+      <li><button data-view="mantenimiento">Mantenimiento</button></li>
+    </ul>
+    <div class="sidebar-foot">
+      <div class="avatar" id="avatarInit">A</div>
+      <div class="who">
+        <div class="name" id="sideName">—</div>
+        <div class="role">Admin</div>
+      </div>
+      <button class="icon-btn" id="btnLogout" title="Cerrar sesión" aria-label="Cerrar sesión">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </button>
+    </div>
+  </aside>
+
+  <div class="main">
+    <div class="topbar">
+      <div style="display:flex;align-items:center;gap:10px;">
+        <button class="icon-btn menu-toggle" id="menuToggle" aria-label="Abrir menú">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 6H20M4 12H20M4 18H20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+        </button>
+        <h1 id="topTitle">Resumen</h1>
+      </div>
+      <div class="topbar-actions">
+        <button class="icon-btn" id="themeToggle" title="Cambiar tema" aria-label="Cambiar tema">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M12 3V5M12 19V21M5 12H3M21 12H19M18.4 18.4L17 17M18.4 5.6L17 7M5.6 18.4L7 17M5.6 5.6L7 7" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/><circle cx="12" cy="12" r="4.2" stroke="currentColor" stroke-width="1.8"/></svg>
+        </button>
+        <button class="icon-btn" id="btnRefresh" title="Actualizar" aria-label="Actualizar">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M4 12a8 8 0 0114-5.3M20 12a8 8 0 01-14 5.3M4 4v5h5M20 20v-5h-5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- RESUMEN -->
+      <section class="view active" id="view-resumen">
+        <div class="view-head"><p>Vista general del estado de la plataforma en este momento.</p></div>
+        <div class="stats-row" id="statsMetricas"></div>
+        <div class="card">
+          <div class="card-head"><h3>Tareas pendientes</h3><div class="sub">Lo que necesita tu atención ahora</div></div>
+          <div class="card-body pad0"><div class="table-wrap" id="tablaTareas"></div></div>
+        </div>
+      </section>
+
+      <!-- USUARIOS -->
+      <section class="view" id="view-usuarios">
+        <div class="view-head"><p>Listado maestro de usuarios registrados. Puedes editar datos de contacto de cualquiera.</p></div>
+        <div class="card">
+          <div class="filter-row">
+            <select id="filtroRol">
+              <option value="">Todos los roles</option>
+              <option value="Prestamista">Prestamista</option>
+              <option value="Prestatario">Prestatario</option>
+              <option value="Admin">Admin</option>
+            </select>
+            <span class="hint" id="contadorUsuarios"></span>
+          </div>
+          <div class="card-body pad0"><div class="table-wrap" id="tablaUsuarios"></div></div>
+        </div>
+      </section>
+
+      <!-- PRESTAMISTAS PENDIENTES -->
+      <section class="view" id="view-prestamistas">
+        <div class="view-head"><p>Prestamistas que ya se registraron y están esperando que confirmes su pago de suscripción (Zelle u otro método manual).</p></div>
+        <div class="card"><div class="card-body pad0"><div class="table-wrap" id="tablaPrestamistas"></div></div></div>
+      </section>
+
+      <!-- COMISIONES -->
+      <section class="view" id="view-comisiones">
+        <div class="view-head"><p>Pagos de comisión del 5% reportados por prestamistas, pendientes de tu aprobación.</p></div>
+        <div class="card"><div class="card-body pad0"><div class="table-wrap" id="tablaComisiones"></div></div></div>
+      </section>
+
+      <!-- DESEMBOLSOS -->
+      <section class="view" id="view-desembolsos">
+        <div class="view-head"><p>Operaciones con contrato ya generado. Solo se puede autorizar el desembolso si la comisión ya está aprobada.</p></div>
+        <div class="card"><div class="card-body pad0"><div class="table-wrap" id="tablaDesembolsos"></div></div></div>
+      </section>
+
+      <!-- PAGOS DE CUOTA -->
+      <section class="view" id="view-pagos">
+        <div class="view-head"><p>Cuotas reportadas por prestatarios, pendientes de validar contra el comprobante.</p></div>
+        <div class="card"><div class="card-body pad0"><div class="table-wrap" id="tablaPagos"></div></div></div>
+      </section>
+
+      <!-- OPERACIONES -->
+      <section class="view" id="view-operaciones">
+        <div class="view-head"><p>Vista maestra de todas las solicitudes/préstamos. El cierre manual es un respaldo para cuando el pago se recibió fuera de la plataforma.</p></div>
+        <div class="card"><div class="card-body pad0"><div class="table-wrap" id="tablaOperaciones"></div></div></div>
+      </section>
+
+      <!-- CONTRATOS -->
+      <section class="view" id="view-contratos">
+        <div class="view-head"><p>Bóveda de contratos firmados, con descarga directa del contrato y el pagaré.</p></div>
+        <div class="card"><div class="card-body pad0"><div class="table-wrap" id="tablaContratos"></div></div></div>
+      </section>
+
+      <!-- INDICADORES -->
+      <section class="view" id="view-indicadores">
+        <div class="view-head"><p>Ingresos de la plataforma y distribución de préstamos/garantías por estatus.</p></div>
+        <div class="stats-row" id="statsIngresos"></div>
+        <div class="card">
+          <div class="card-head"><h3>Préstamos por estatus</h3></div>
+          <div class="card-body pad0"><div class="table-wrap" id="tablaPrestamosEstatus"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Garantías por estatus</h3></div>
+          <div class="card-body pad0"><div class="table-wrap" id="tablaGarantiasEstatus"></div></div>
+        </div>
+      </section>
+
+      <!-- MANTENIMIENTO -->
+      <section class="view" id="view-mantenimiento">
+        <div class="view-head"><p>El cron diario (vencimientos de suscripción y mora) corre solo en Render todos los días. Desde aquí puedes forzar una corrida sin esperar al horario.</p></div>
+        <div class="card">
+          <div class="card-head"><h3>Vencimientos de suscripción</h3></div>
+          <div class="card-body">
+            <p class="hint" style="margin-bottom:12px;">Revisa prestamistas con plan activo: vence hoy → pasa a Vencido. Vence en 5 o 2 días → recordatorio.</p>
+            <button class="btn-ghost btn-sm" id="btnCronSuscripcion"><span class="btn-label">Ejecutar ahora</span></button>
+            <div class="form-msg" id="msgCronSuscripcion" style="margin-top:12px;"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Cuotas en mora</h3></div>
+          <div class="card-body">
+            <p class="hint" style="margin-bottom:12px;">Revisa cuotas pendientes/vencidas pasados los 3 días de gracia, calcula mora, y penaliza reputación la primera vez.</p>
+            <button class="btn-ghost btn-sm" id="btnCronMora"><span class="btn-label">Ejecutar ahora</span></button>
+            <div class="form-msg" id="msgCronMora" style="margin-top:12px;"></div>
+          </div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Tu perfil</h3></div>
+          <div class="card-body" id="perfilBody">Cargando…</div>
+        </div>
+      </section>
+
+    </div>
+  </div>
+</div>
+
+<div class="toast-stack" id="toastStack"></div>
+
+<script>
+(function(){
+"use strict";
+var API_BASE = "https://prestavia-backend.onrender.com";
+var state = { token: null, usuario: null };
+
+/* ---------- theme ---------- */
+var root = document.documentElement;
+function applyTheme(t){ if(t) root.setAttribute("data-theme", t); else root.removeAttribute("data-theme"); }
+try{ var saved = localStorage.getItem("pva-theme"); if(saved) applyTheme(saved); }catch(e){}
+document.getElementById("themeToggle").addEventListener("click", function(){
+  var current = root.getAttribute("data-theme");
+  var prefersDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  var effectiveDark = current ? current === "dark" : prefersDark;
+  var next = effectiveDark ? "light" : "dark";
+  applyTheme(next);
+  try{ localStorage.setItem("pva-theme", next); }catch(e){}
+});
+
+/* ---------- toasts ---------- */
+function toast(type, msg){
+  var stack = document.getElementById("toastStack");
+  var t = document.createElement("div");
+  t.className = "toast " + type;
+  t.textContent = msg;
+  stack.appendChild(t);
+  setTimeout(function(){ t.remove(); }, 5000);
+}
+
+/* ---------- API helpers ---------- */
+function apiFetch(path, opts){
+  opts = opts || {};
+  var headers = Object.assign({ "Content-Type": "application/json" }, opts.headers || {});
+  if(state.token) headers["Authorization"] = "Bearer " + state.token;
+  return fetch(API_BASE + path, {
+    method: opts.method || "GET",
+    headers: headers,
+    body: opts.body ? JSON.stringify(opts.body) : undefined
+  }).then(function(res){
+    return res.json().catch(function(){ return {}; }).then(function(data){
+      if(res.status === 401){ forceLogout("Tu sesión expiró. Inicia sesión de nuevo."); }
+      return { status: res.status, data: data };
+    });
+  });
+}
+
+function friendlyError(data){
+  return (data && data.mensaje) ? data.mensaje : "Algo salió mal. Intenta de nuevo.";
+}
+function money(n){
+  if(n === null || n === undefined || n === "" || n === "--") return "—";
+  var num = parseFloat(n);
+  if(isNaN(num)) return "—";
+  return "$" + num.toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+}
+function dateFmt(iso){
+  if(!iso) return "—";
+  try{ return new Date(iso).toLocaleDateString("es-DO",{year:"numeric",month:"short",day:"numeric"}); }catch(e){ return iso; }
+}
+function escapeHtml(s){
+  return (s===null||s===undefined) ? "" : String(s).replace(/[&<>"']/g, function(c){
+    return {"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c];
+  });
+}
+
+var GOOD_STATES = {"Financiada":1,"Por_Desembolsar":1,"En_Cobro":1,"Pagada":1,"Activo":1,"Aprobado":1,"Validado":1,"Liberada":1,"Vigente":1,"Validado_IA":1};
+var WARN_STATES = {"Pendiente":1,"Abierta":1,"En Negociacion":1};
+var DANGER_STATES = {"Rechazada":1,"Vencido":1,"Rechazado":1,"Cancelado":1};
+function chip(status){
+  var cls = "muted";
+  if(GOOD_STATES[status]) cls = "ok";
+  else if(WARN_STATES[status]) cls = "warn";
+  else if(DANGER_STATES[status]) cls = "danger";
+  return '<span class="chip ' + cls + '">' + escapeHtml(status || "—") + "</span>";
+}
+
+/* ---------- login ---------- */
+var formLogin = document.getElementById("formLogin");
+var msgLogin = document.getElementById("msgLogin");
+
+function setLoading(form, loading){
+  var btn = form.querySelector('button[type="submit"], button');
+  if(!btn) return;
+  var label = btn.querySelector(".btn-label");
+  btn.disabled = loading;
+  var existing = btn.querySelector(".spin");
+  if(loading && !existing){ var s = document.createElement("span"); s.className="spin"; btn.insertBefore(s, label); }
+  else if(!loading && existing){ existing.remove(); }
+}
+function showMsg(el, type, html){ el.className = "form-msg show " + type; el.innerHTML = html; }
+function hideMsg(el){ el.className = "form-msg"; el.innerHTML = ""; }
+
+formLogin.addEventListener("submit", function(e){
+  e.preventDefault();
+  hideMsg(msgLogin);
+  setLoading(formLogin, true);
+  var payload = {};
+  new FormData(formLogin).forEach(function(v,k){ payload[k]=v; });
+  fetch(API_BASE + "/auth/login", {
+    method:"POST", headers:{"Content-Type":"application/json"}, body: JSON.stringify(payload)
+  }).then(function(res){ return res.json().then(function(data){ return {status:res.status, data:data}; }); })
+  .then(function(r){
+    setLoading(formLogin, false);
+    if(r.data && r.data.exito){
+      if(r.data.usuario.rol !== "Admin"){
+        showMsg(msgLogin, "err", "Esta cuenta no tiene rol de Admin.");
+        return;
+      }
+      if(r.data.requiereCambioClave){
+        showMsg(msgLogin, "err", "Esta cuenta tiene una contraseña temporal pendiente de cambiar. Usa el sitio público para actualizarla y vuelve a entrar aquí.");
+        return;
+      }
+      state.token = r.data.token;
+      state.usuario = r.data.usuario;
+      try{ sessionStorage.setItem("pva-token", state.token); sessionStorage.setItem("pva-user", JSON.stringify(state.usuario)); }catch(err){}
+      bootApp();
+    } else {
+      showMsg(msgLogin, "err", friendlyError(r.data));
+    }
+  }).catch(function(){
+    setLoading(formLogin, false);
+    showMsg(msgLogin, "err", "No pudimos conectar con el servidor. Si estaba dormido, intenta de nuevo en unos segundos.");
+  });
+});
+
+function forceLogout(message){
+  state.token = null; state.usuario = null;
+  try{ sessionStorage.removeItem("pva-token"); sessionStorage.removeItem("pva-user"); }catch(e){}
+  document.getElementById("app").hidden = true;
+  document.getElementById("loginScreen").hidden = false;
+  if(message) showMsg(msgLogin, "err", message);
+}
+document.getElementById("btnLogout").addEventListener("click", function(){ forceLogout(); });
+
+/* ---------- sidebar nav ---------- */
+var navButtons = document.querySelectorAll(".navlist button");
+var viewTitles = {
+  resumen:"Resumen", usuarios:"Usuarios", prestamistas:"Activación de prestamistas",
+  comisiones:"Comisiones pendientes", desembolsos:"Desembolsos", pagos:"Cuotas reportadas",
+  operaciones:"Operaciones", contratos:"Bóveda de contratos", indicadores:"Ingresos e indicadores",
+  mantenimiento:"Mantenimiento"
+};
+var loaders = {}; // view -> function to (re)load data
+
+function goToView(name){
+  navButtons.forEach(function(b){ b.classList.toggle("active", b.getAttribute("data-view")===name); });
+  document.querySelectorAll(".view").forEach(function(v){ v.classList.toggle("active", v.id === "view-"+name); });
+  document.getElementById("topTitle").textContent = viewTitles[name] || name;
+  document.getElementById("sidebar").classList.remove("open");
+  if(loaders[name]) loaders[name]();
+}
+navButtons.forEach(function(b){ b.addEventListener("click", function(){ goToView(b.getAttribute("data-view")); }); });
+
+document.getElementById("menuToggle").addEventListener("click", function(){
+  document.getElementById("sidebar").classList.toggle("open");
+});
+document.getElementById("btnRefresh").addEventListener("click", function(){
+  var active = document.querySelector(".navlist button.active");
+  if(active && loaders[active.getAttribute("data-view")]) loaders[active.getAttribute("data-view")]();
+});
+
+/* ---------- boot ---------- */
+function initials(name){
+  if(!name) return "A";
+  var p = name.trim().split(/\s+/);
+  return ((p[0]||"")[0]||"") + ((p[1]||"")[0]||"");
+}
+
+function bootApp(){
+  document.getElementById("loginScreen").hidden = true;
+  document.getElementById("app").hidden = false;
+  document.getElementById("sideName").textContent = state.usuario.nombreLegal || state.usuario.email;
+  document.getElementById("avatarInit").textContent = initials(state.usuario.nombreLegal).toUpperCase();
+  goToView("resumen");
+}
+
+/* ===================== RESUMEN ===================== */
+loaders.resumen = function(){
+  var stats = document.getElementById("statsMetricas");
+  stats.innerHTML = '<div class="stat-tile"><div class="label">Cargando…</div></div>';
+  Promise.all([ apiFetch("/admin/dashboard/metricas"), apiFetch("/admin/dashboard/tareas-pendientes") ]).then(function(res){
+    var m = res[0].data && res[0].data.exito ? res[0].data.datos : null;
+    var t = res[1].data && res[1].data.exito ? res[1].data.datos : null;
+    if(m){
+      stats.innerHTML =
+        tile("Préstamos activos/cerrados", m.totalPrestamos, "") +
+        tile("Monto total financiado", money(m.montoTotalFinanciado), "") +
+        tile("Solicitudes en curso", m.solicitudesPendientes, "warn");
+      if(t) stats.innerHTML += tile("Tareas pendientes", (t.prestamistasPendientesActivacion+t.comisionesPendientes+t.cuotasPendientesValidacion+t.desembolsosListos+t.garantiasPendientesEvaluacionIA), "warn");
+    } else {
+      stats.innerHTML = '<div class="stat-tile"><div class="label">Error</div><div class="value">—</div></div>';
+      toast("err", friendlyError(res[0].data));
+    }
+    updateBadges(t);
+    var tabla = document.getElementById("tablaTareas");
+    if(!t){ tabla.innerHTML = '<div class="empty-state">No se pudo cargar.</div>'; return; }
+    var rows = [
+      ["Prestamistas pendientes de activación", t.prestamistasPendientesActivacion, "prestamistas"],
+      ["Comisiones pendientes de aprobar", t.comisionesPendientes, "comisiones"],
+      ["Cuotas pendientes de validar", t.cuotasPendientesValidacion, "pagos"],
+      ["Operaciones listas para desembolso", t.desembolsosListos, "desembolsos"],
+      ["Garantías sin evaluación de IA", t.garantiasPendientesEvaluacionIA, null]
+    ];
+    var html = "<table><tbody>";
+    rows.forEach(function(r){
+      html += "<tr><td>"+r[0]+"</td><td class=\"num\">"+r[1]+"</td><td>"+
+        (r[1]>0 && r[2] ? '<button class="btn-ghost btn-sm" data-goto="'+r[2]+'">Revisar</button>' : "") +
+        "</td></tr>";
+    });
+    html += "</tbody></table>";
+    tabla.innerHTML = html;
+    tabla.querySelectorAll("[data-goto]").forEach(function(b){
+      b.addEventListener("click", function(){ goToView(b.getAttribute("data-goto")); });
+    });
+  }).catch(function(){ toast("err","No se pudo conectar con el servidor."); });
+};
+function tile(label, value, valueClass){
+  return '<div class="stat-tile"><div class="label">'+escapeHtml(label)+'</div><div class="value '+(valueClass||"")+'">'+escapeHtml(String(value))+'</div></div>';
+}
+function updateBadges(t){
+  function setBadge(id, n){
+    var el = document.getElementById(id);
+    if(n > 0){ el.hidden = false; el.textContent = n; } else { el.hidden = true; }
+  }
+  if(!t) return;
+  setBadge("badgePrestamistas", t.prestamistasPendientesActivacion);
+  setBadge("badgeComisiones", t.comisionesPendientes);
+  setBadge("badgeDesembolsos", t.desembolsosListos);
+  setBadge("badgePagos", t.cuotasPendientesValidacion);
+}
+
+/* ===================== USUARIOS ===================== */
+var usuariosCache = [];
+loaders.usuarios = function(){ cargarUsuarios(document.getElementById("filtroRol").value); };
+document.getElementById("filtroRol").addEventListener("change", function(){ cargarUsuarios(this.value); });
+
+function cargarUsuarios(rol){
+  var tabla = document.getElementById("tablaUsuarios");
+  tabla.innerHTML = '<div class="empty-state">Cargando…</div>';
+  apiFetch("/admin/usuarios" + (rol ? "?rol="+encodeURIComponent(rol) : "")).then(function(r){
+    if(!(r.data && r.data.exito)){ tabla.innerHTML = '<div class="empty-state">'+friendlyError(r.data)+'</div>'; return; }
+    usuariosCache = r.data.datos || [];
+    document.getElementById("contadorUsuarios").textContent = usuariosCache.length + " usuario(s)";
+    if(usuariosCache.length === 0){ tabla.innerHTML = '<div class="empty-state">Sin resultados.</div>'; return; }
+    var html = "<table><thead><tr><th>Nombre</th><th>Correo</th><th>Rol</th><th>Suscripción</th><th>País</th><th>Reputación</th><th>Registrado</th><th></th></tr></thead><tbody>";
+    usuariosCache.forEach(function(u){
+      html += "<tr data-id=\""+u.id_usuario+"\">" +
+        "<td>"+escapeHtml(u.nombre_legal)+"</td>" +
+        "<td>"+escapeHtml(u.email)+"</td>" +
+        "<td>"+escapeHtml(u.rol)+"</td>" +
+        "<td>"+chip(u.estatus_suscripcion)+"</td>" +
+        "<td>"+escapeHtml(u.pais_residencia||"—")+"</td>" +
+        "<td class=\"num\">"+u.puntos_reputacion+"</td>" +
+        "<td>"+dateFmt(u.created_at)+"</td>" +
+        "<td><button class=\"btn-ghost btn-sm\" data-edit=\""+u.id_usuario+"\">Editar</button></td>" +
+        "</tr>";
+    });
+    html += "</tbody></table>";
+    tabla.innerHTML = html;
+    tabla.querySelectorAll("[data-edit]").forEach(function(b){
+      b.addEventListener("click", function(){ abrirEdicionUsuario(b.getAttribute("data-edit")); });
+    });
+  }).catch(function(){ tabla.innerHTML = '<div class="empty-state">No se pudo conectar.</div>'; });
+}
+
+function abrirEdicionUsuario(idUsuario){
+  var u = usuariosCache.find(function(x){ return x.id_usuario === idUsuario; });
+  if(!u) return;
+  var fila = document.querySelector('#tablaUsuarios tr[data-id="'+idUsuario+'"]');
+  var existing = document.getElementById("editForm-"+idUsuario);
+  if(existing){ existing.remove(); return; }
+  document.querySelectorAll('[id^="editForm-"]').forEach(function(f){ f.remove(); });
+
+  var wrap = document.createElement("tr");
+  wrap.id = "editForm-"+idUsuario;
+  var td = document.createElement("td");
+  td.colSpan = 8;
+  td.innerHTML =
+    '<form class="inline-form" data-id="'+idUsuario+'">' +
+      '<label>Nombre<input name="nombre" value="'+escapeHtml(u.nombre_legal)+'"></label>' +
+      '<label>Correo<input name="email" type="email" value="'+escapeHtml(u.email)+'"></label>' +
+      '<label>Teléfono<input name="telefono" value="'+escapeHtml(u.telefono||"")+'"></label>' +
+      '<label>Dirección<input name="direccion" value="'+escapeHtml(u.direccion_fiscal||"")+'"></label>' +
+      '<div class="form-msg full" style="display:none;"></div>' +
+      '<div class="actions">' +
+        '<button type="button" class="btn-ghost btn-sm" data-cancel>Cancelar</button>' +
+        '<button type="submit" class="btn-primary btn-sm"><span class="btn-label">Guardar</span></button>' +
+      '</div>' +
+    '</form>';
+  wrap.appendChild(td);
+  fila.after(wrap);
+
+  var form = td.querySelector("form");
+  var msg = td.querySelector(".form-msg");
+  td.querySelector("[data-cancel]").addEventListener("click", function(){ wrap.remove(); });
+  form.addEventListener("submit", function(e){
+    e.preventDefault();
+    hideMsg(msg);
+    setLoading(form, true);
+    var payload = {};
+    new FormData(form).forEach(function(v,k){ payload[k]=v; });
+    apiFetch("/admin/usuarios/"+idUsuario, { method:"PATCH", body: payload }).then(function(r){
+      setLoading(form, false);
+      if(r.data && r.data.exito){
+        toast("ok", "Usuario actualizado.");
+        wrap.remove();
+        cargarUsuarios(document.getElementById("filtroRol").value);
+      } else {
+        showMsg(msg, "err", friendlyError(r.data));
+      }
+    }).catch(function(){ setLoading(form,false); showMsg(msg,"err","No se pudo conectar."); });
+  });
+}
+
+/* ===================== PRESTAMISTAS PENDIENTES ===================== */
+loaders.prestamistas = function(){
+  var tabla = document.getElementById("tablaPrestamistas");
+  tabla.innerHTML = '<div class="empty-state">Cargando…</div>';
+  apiFetch("/admin/prestamistas/pendientes-activacion").then(function(r){
+    if(!(r.data && r.data.exito)){ tabla.innerHTML = '<div class="empty-state">'+friendlyError(r.data)+'</div>'; return; }
+    var rows = r.data.datos || [];
+    if(rows.length === 0){ tabla.innerHTML = '<div class="empty-state">No hay prestamistas esperando activación.</div>'; return; }
+    var html = "<table><thead><tr><th>Nombre</th><th>Correo</th><th>Teléfono</th><th>País</th><th>Plan declarado</th><th>Registrado</th><th>Activar</th></tr></thead><tbody>";
+    rows.forEach(function(p){
+      html += "<tr data-id=\""+p.id_usuario+"\">" +
+        "<td>"+escapeHtml(p.nombre_legal)+"</td><td>"+escapeHtml(p.email)+"</td><td>"+escapeHtml(p.telefono||"—")+"</td>" +
+        "<td>"+escapeHtml(p.pais_residencia||"—")+"</td><td>"+escapeHtml(p.plan_suscripcion||"mensual")+"</td><td>"+dateFmt(p.created_at)+"</td>" +
+        "<td class=\"row-actions\">" +
+          "<select class=\"plan-select\" style=\"min-width:110px;\"><option value=\"mensual\">Mensual $20</option><option value=\"anual\">Anual $200</option></select>" +
+          "<button class=\"btn-primary btn-sm\" data-activar=\""+p.id_usuario+"\">Activar</button>" +
+        "</td></tr>";
+    });
+    html += "</tbody></table>";
+    tabla.innerHTML = html;
+    tabla.querySelectorAll("[data-activar]").forEach(function(b){
+      b.addEventListener("click", function(){
+        var id = b.getAttribute("data-activar");
+        var plan = b.closest("tr").querySelector(".plan-select").value;
+        b.disabled = true;
+        apiFetch("/admin/prestamistas/"+id+"/activar-suscripcion", { method:"POST", body:{plan:plan} }).then(function(r){
+          if(r.data && r.data.exito){ toast("ok", r.data.mensaje); loaders.prestamistas(); loaders.resumen(); }
+          else { toast("err", friendlyError(r.data)); b.disabled = false; }
+        }).catch(function(){ toast("err","No se pudo conectar."); b.disabled=false; });
+      });
+    });
+  }).catch(function(){ tabla.innerHTML = '<div class="empty-state">No se pudo conectar.</div>'; });
+};
+
+/* ===================== COMISIONES ===================== */
+loaders.comisiones = function(){
+  var tabla = document.getElementById("tablaComisiones");
+  tabla.innerHTML = '<div class="empty-state">Cargando…</div>';
+  apiFetch("/admin/comisiones/pendientes").then(function(r){
+    if(!(r.data && r.data.exito)){ tabla.innerHTML = '<div class="empty-state">'+friendlyError(r.data)+'</div>'; return; }
+    var rows = r.data.datos || [];
+    if(rows.length === 0){ tabla.innerHTML = '<div class="empty-state">No hay comisiones pendientes.</div>'; return; }
+    var html = "<table><thead><tr><th>Operación</th><th>Prestatario</th><th class=\"num\">Monto pagado</th><th>Método</th><th>Referencia</th><th>Acción</th></tr></thead><tbody>";
+    rows.forEach(function(c){
+      html += "<tr><td>"+escapeHtml(c.id_oportunidad)+"</td><td>"+escapeHtml(c.prestatario||"—")+"</td>" +
+        "<td class=\"num\">"+money(c.monto_pagado)+"</td><td>"+escapeHtml(c.metodo_pago||"—")+"</td><td>"+escapeHtml(c.referencia||"—")+"</td>" +
+        "<td class=\"row-actions\">" +
+          "<button class=\"btn-primary btn-sm\" data-aprobar=\""+c.id_comision+"\">Aprobar</button>" +
+          "<button class=\"btn-danger btn-sm\" data-rechazar=\""+c.id_comision+"\">Rechazar</button>" +
+        "</td></tr>";
+    });
+    html += "</tbody></table>";
+    tabla.innerHTML = html;
+    function act(id, aprobado){
+      var notas = aprobado ? null : prompt("Motivo del rechazo (opcional):") || "";
+      apiFetch("/admin/comisiones/"+id+"/aprobar", { method:"POST", body:{aprobado:aprobado, notas:notas} }).then(function(r){
+        if(r.data && r.data.exito){ toast("ok", r.data.mensaje); loaders.comisiones(); loaders.resumen(); }
+        else toast("err", friendlyError(r.data));
+      }).catch(function(){ toast("err","No se pudo conectar."); });
+    }
+    tabla.querySelectorAll("[data-aprobar]").forEach(function(b){ b.addEventListener("click", function(){ act(b.getAttribute("data-aprobar"), true); }); });
+    tabla.querySelectorAll("[data-rechazar]").forEach(function(b){ b.addEventListener("click", function(){ act(b.getAttribute("data-rechazar"), false); }); });
+  }).catch(function(){ tabla.innerHTML = '<div class="empty-state">No se pudo conectar.</div>'; });
+};
+
+/* ===================== DESEMBOLSOS ===================== */
+loaders.desembolsos = function(){
+  var tabla = document.getElementById("tablaDesembolsos");
+  tabla.innerHTML = '<div class="empty-state">Cargando…</div>';
+  apiFetch("/admin/prestamos/por-desembolsar").then(function(r){
+    if(!(r.data && r.data.exito)){ tabla.innerHTML = '<div class="empty-state">'+friendlyError(r.data)+'</div>'; return; }
+    var rows = r.data.datos || [];
+    if(rows.length === 0){ tabla.innerHTML = '<div class="empty-state">No hay operaciones esperando desembolso.</div>'; return; }
+    var html = "<table><thead><tr><th>Operación</th><th>Prestatario</th><th>Prestamista</th><th class=\"num\">Monto</th><th class=\"num\">Neto a entregar</th><th>Comisión</th><th>Acción</th></tr></thead><tbody>";
+    rows.forEach(function(o){
+      var comisionOk = o.estatus_comision === "Aprobado";
+      html += "<tr><td>"+escapeHtml(o.id_oportunidad)+"</td><td>"+escapeHtml(o.prestatario||"—")+"</td><td>"+escapeHtml(o.prestamista||"—")+"</td>" +
+        "<td class=\"num\">"+money(o.monto_solicitado)+"</td><td class=\"num\">"+money(o.monto_neto_entregar)+"</td>" +
+        "<td>"+chip(o.estatus_comision||"Pendiente")+"</td>" +
+        "<td><button class=\"btn-primary btn-sm\" data-desembolsar=\""+o.id_oportunidad+"\" "+(comisionOk?"":"disabled")+">Autorizar</button></td>" +
+        "</tr>";
+    });
+    html += "</tbody></table>";
+    tabla.innerHTML = html;
+    tabla.querySelectorAll("[data-desembolsar]").forEach(function(b){
+      b.addEventListener("click", function(){
+        var id = b.getAttribute("data-desembolsar");
+        b.disabled = true;
+        apiFetch("/admin/prestamos/"+id+"/autorizar-desembolso", { method:"POST" }).then(function(r){
+          if(r.data && r.data.exito){ toast("ok", r.data.mensaje); loaders.desembolsos(); loaders.resumen(); }
+          else { toast("err", friendlyError(r.data)); b.disabled = false; }
+        }).catch(function(){ toast("err","No se pudo conectar."); b.disabled=false; });
+      });
+    });
+  }).catch(function(){ tabla.innerHTML = '<div class="empty-state">No se pudo conectar.</div>'; });
+};
+
+/* ===================== PAGOS DE CUOTA ===================== */
+loaders.pagos = function(){
+  var tabla = document.getElementById("tablaPagos");
+  tabla.innerHTML = '<div class="empty-state">Cargando…</div>';
+  apiFetch("/admin/pagos/pendientes").then(function(r){
+    if(!(r.data && r.data.exito)){ tabla.innerHTML = '<div class="empty-state">'+friendlyError(r.data)+'</div>'; return; }
+    var rows = r.data.datos || [];
+    if(rows.length === 0){ tabla.innerHTML = '<div class="empty-state">No hay cuotas pendientes de validar.</div>'; return; }
+    var html = "<table><thead><tr><th>Operación</th><th>Prestatario</th><th class=\"num\">Monto reportado</th><th>Método</th><th>Referencia</th><th>Acción</th></tr></thead><tbody>";
+    rows.forEach(function(p){
+      html += "<tr><td>"+escapeHtml(p.id_oportunidad)+"</td><td>"+escapeHtml(p.prestatario||"—")+"</td>" +
+        "<td class=\"num\">"+money(p.monto_reportado)+"</td><td>"+escapeHtml(p.metodo_pago||"—")+"</td><td>"+escapeHtml(p.referencia_bancaria||"—")+"</td>" +
+        "<td class=\"row-actions\">" +
+          "<button class=\"btn-primary btn-sm\" data-validar=\""+p.id_transaccion+"\">Aprobar</button>" +
+          "<button class=\"btn-danger btn-sm\" data-rechazar-pago=\""+p.id_transaccion+"\">Rechazar</button>" +
+        "</td></tr>";
+    });
+    html += "</tbody></table>";
+    tabla.innerHTML = html;
+    function act(id, aprobado){
+      var motivo = aprobado ? null : prompt("Motivo del rechazo:") || "Comprobante inválido";
+      apiFetch("/admin/pagos/"+id+"/validar", { method:"POST", body:{aprobado:aprobado, motivoRechazo:motivo} }).then(function(r){
+        if(r.data && r.data.exito){ toast("ok", r.data.mensaje); loaders.pagos(); loaders.resumen(); }
+        else toast("err", friendlyError(r.data));
+      }).catch(function(){ toast("err","No se pudo conectar."); });
+    }
+    tabla.querySelectorAll("[data-validar]").forEach(function(b){ b.addEventListener("click", function(){ act(b.getAttribute("data-validar"), true); }); });
+    tabla.querySelectorAll("[data-rechazar-pago]").forEach(function(b){ b.addEventListener("click", function(){ act(b.getAttribute("data-rechazar-pago"), false); }); });
+  }).catch(function(){ tabla.innerHTML = '<div class="empty-state">No se pudo conectar.</div>'; });
+};
+
+/* ===================== OPERACIONES (master + cierre manual) ===================== */
+loaders.operaciones = function(){
+  var tabla = document.getElementById("tablaOperaciones");
+  tabla.innerHTML = '<div class="empty-state">Cargando…</div>';
+  apiFetch("/admin/oportunidades").then(function(r){
+    if(!(r.data && r.data.exito)){ tabla.innerHTML = '<div class="empty-state">'+friendlyError(r.data)+'</div>'; return; }
+    var rows = r.data.datos || [];
+    if(rows.length === 0){ tabla.innerHTML = '<div class="empty-state">No hay operaciones todavía.</div>'; return; }
+    var html = "<table><thead><tr><th>Operación</th><th>Prestatario</th><th class=\"num\">Monto</th><th>Estatus</th><th>Acción</th></tr></thead><tbody>";
+    rows.forEach(function(o){
+      var puedeCerrar = o.Estatus === "En_Cobro";
+      html += "<tr><td>"+escapeHtml(o.ID_Op)+"</td><td>"+escapeHtml(o.Prestatario||"—")+"</td>" +
+        "<td class=\"num\">"+money(o.Monto_Solicitado)+"</td><td>"+chip(o.Estatus)+"</td>" +
+        "<td>"+(puedeCerrar ? '<button class="btn-ghost btn-sm" data-cerrar="'+o.ID_Op+'">Cerrar manual</button>' : "") + "</td>" +
+        "</tr>";
+    });
+    html += "</tbody></table>";
+    tabla.innerHTML = html;
+    tabla.querySelectorAll("[data-cerrar]").forEach(function(b){
+      b.addEventListener("click", function(){
+        var id = b.getAttribute("data-cerrar");
+        var motivo = prompt("Motivo del cierre manual (ej. pago recibido fuera de la plataforma):");
+        if(motivo === null) return;
+        b.disabled = true;
+        apiFetch("/admin/prestamos/"+id+"/cerrar-manual", { method:"POST", body:{motivo:motivo} }).then(function(r){
+          if(r.data && r.data.exito){ toast("ok", r.data.mensaje); loaders.operaciones(); loaders.resumen(); }
+          else { toast("err", friendlyError(r.data)); b.disabled = false; }
+        }).catch(function(){ toast("err","No se pudo conectar."); b.disabled=false; });
+      });
+    });
+  }).catch(function(){ tabla.innerHTML = '<div class="empty-state">No se pudo conectar.</div>'; });
+};
+
+/* ===================== CONTRATOS ===================== */
+loaders.contratos = function(){
+  var tabla = document.getElementById("tablaContratos");
+  tabla.innerHTML = '<div class="empty-state">Cargando…</div>';
+  apiFetch("/admin/contratos/boveda").then(function(r){
+    if(!(r.data && r.data.exito)){ tabla.innerHTML = '<div class="empty-state">'+friendlyError(r.data)+'</div>'; return; }
+    var rows = r.data.datos || [];
+    if(rows.length === 0){ tabla.innerHTML = '<div class="empty-state">Todavía no hay contratos generados.</div>'; return; }
+    var html = "<table><thead><tr><th>Contrato</th><th>Operación</th><th>Prestatario</th><th>Prestamista</th><th>Firmado</th><th>Estatus</th><th>Documentos</th></tr></thead><tbody>";
+    rows.forEach(function(c){
+      html += "<tr><td>"+escapeHtml(c.id_contrato)+"</td><td>"+escapeHtml(c.id_oportunidad)+"</td>" +
+        "<td>"+escapeHtml(c.prestatario||"—")+"</td><td>"+escapeHtml(c.prestamista||"—")+"</td>" +
+        "<td>"+dateFmt(c.fecha_firma)+"</td><td>"+chip(c.estatus_contrato)+"</td>" +
+        "<td class=\"row-actions\">" +
+          "<button class=\"btn-ghost btn-sm\" data-doc=\""+escapeHtml(c.url_contrato)+"\">Contrato</button>" +
+          "<button class=\"btn-ghost btn-sm\" data-doc=\""+escapeHtml(c.url_pagare)+"\">Pagaré</button>" +
+        "</td></tr>";
+    });
+    html += "</tbody></table>";
+    tabla.innerHTML = html;
+    tabla.querySelectorAll("[data-doc]").forEach(function(b){
+      b.addEventListener("click", function(){ descargarDocumento(b.getAttribute("data-doc"), b); });
+    });
+  }).catch(function(){ tabla.innerHTML = '<div class="empty-state">No se pudo conectar.</div>'; });
+};
+
+function descargarDocumento(path, btn){
+  if(!path){ toast("err","Este documento no está disponible."); return; }
+  btn.disabled = true;
+  fetch(API_BASE + path, { headers: { "Authorization": "Bearer " + state.token } }).then(function(res){
+    if(!res.ok){ throw new Error("status " + res.status); }
+    return res.blob();
+  }).then(function(blob){
+    var url = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 30000);
+    btn.disabled = false;
+  }).catch(function(){
+    toast("err","No se pudo descargar el documento.");
+    btn.disabled = false;
+  });
+}
+
+/* ===================== INDICADORES ===================== */
+loaders.indicadores = function(){
+  var stats = document.getElementById("statsIngresos");
+  var t1 = document.getElementById("tablaPrestamosEstatus");
+  var t2 = document.getElementById("tablaGarantiasEstatus");
+  stats.innerHTML = '<div class="stat-tile"><div class="label">Cargando…</div></div>';
+  t1.innerHTML = t2.innerHTML = '<div class="empty-state">Cargando…</div>';
+  Promise.all([ apiFetch("/admin/ingresos"), apiFetch("/admin/indicadores") ]).then(function(res){
+    var ing = res[0].data && res[0].data.exito ? res[0].data.datos : null;
+    var ind = res[1].data && res[1].data.exito ? res[1].data.datos : null;
+    if(ing){
+      stats.innerHTML =
+        tile("Comisiones aprobadas", money(ing.comisiones.total), "ok") +
+        tile("Prestamistas activos (mensual)", ing.suscripciones.prestamistasActivosMensual, "") +
+        tile("Prestamistas activos (anual)", ing.suscripciones.prestamistasActivosAnual, "") +
+        tile("Ingreso total estimado", money(ing.totalIngresos), "ok");
+    } else { stats.innerHTML = ""; toast("err", friendlyError(res[0].data)); }
+
+    if(ind){
+      var h1 = "<table><thead><tr><th>Estatus</th><th class=\"num\">Cantidad</th><th class=\"num\">Monto</th></tr></thead><tbody>";
+      ind.prestamosPorEstatus.forEach(function(p){ h1 += "<tr><td>"+chip(p.estatus)+"</td><td class=\"num\">"+p.cantidad+"</td><td class=\"num\">"+money(p.monto)+"</td></tr>"; });
+      h1 += "</tbody></table>";
+      t1.innerHTML = ind.prestamosPorEstatus.length ? h1 : '<div class="empty-state">Sin datos.</div>';
+
+      var h2 = "<table><thead><tr><th>Estatus</th><th class=\"num\">Cantidad</th></tr></thead><tbody>";
+      ind.garantiasPorEstatus.forEach(function(g){ h2 += "<tr><td>"+chip(g.estatus)+"</td><td class=\"num\">"+g.cantidad+"</td></tr>"; });
+      h2 += "</tbody></table>";
+      t2.innerHTML = ind.garantiasPorEstatus.length ? h2 : '<div class="empty-state">Sin datos.</div>';
+    } else {
+      t1.innerHTML = t2.innerHTML = '<div class="empty-state">No se pudo cargar.</div>';
+    }
+  }).catch(function(){ toast("err","No se pudo conectar."); });
+};
+
+/* ===================== MANTENIMIENTO ===================== */
+loaders.mantenimiento = function(){
+  var p = document.getElementById("perfilBody");
+  p.textContent = "Cargando…";
+  apiFetch("/admin/perfil").then(function(r){
+    if(r.data && r.data.exito){
+      var d = r.data.datos;
+      p.innerHTML = "<table><tbody>" +
+        "<tr><td>Nombre</td><td>"+escapeHtml(d.nombre_legal)+"</td></tr>" +
+        "<tr><td>Correo</td><td>"+escapeHtml(d.email)+"</td></tr>" +
+        "<tr><td>Teléfono</td><td>"+escapeHtml(d.telefono||"—")+"</td></tr>" +
+        "<tr><td>Rol</td><td>"+escapeHtml(d.rol)+"</td></tr>" +
+        "<tr><td>Cuenta creada</td><td>"+dateFmt(d.created_at)+"</td></tr>" +
+        "</tbody></table>";
+    } else { p.innerHTML = '<div class="empty-state">'+friendlyError(r.data)+'</div>'; }
+  }).catch(function(){ p.innerHTML = '<div class="empty-state">No se pudo conectar.</div>'; });
+};
+
+function runCron(path, msgElId, btnId){
+  var msg = document.getElementById(msgElId);
+  var btn = document.getElementById(btnId);
+  hideMsg(msg);
+  setLoading(btn, true);
+  apiFetch(path, { method:"POST" }).then(function(r){
+    setLoading(btn, false);
+    if(r.data && r.data.exito){
+      showMsg(msg, "ok", r.data.mensaje + "<br>" + Object.entries(r.data.datos||{}).map(function(e){return e[0]+": "+e[1];}).join(" · "));
+      loaders.resumen();
+    } else {
+      showMsg(msg, "err", friendlyError(r.data));
+    }
+  }).catch(function(){ setLoading(btn,false); showMsg(msg, "err", "No se pudo conectar."); });
+}
+document.getElementById("btnCronSuscripcion").addEventListener("click", function(){
+  runCron("/admin/cron/vencimientos-suscripcion", "msgCronSuscripcion", "btnCronSuscripcion");
+});
+document.getElementById("btnCronMora").addEventListener("click", function(){
+  runCron("/admin/cron/cuotas-vencidas", "msgCronMora", "btnCronMora");
+});
+
+/* ---------- restore session ---------- */
+try{
+  var tok = sessionStorage.getItem("pva-token");
+  var usr = sessionStorage.getItem("pva-user");
+  if(tok && usr){
+    var parsed = JSON.parse(usr);
+    if(parsed.rol === "Admin"){
+      state.token = tok; state.usuario = parsed;
+      bootApp();
+    }
+  }
+}catch(e){}
+
+})();
+</script>
+</body>
+</html>
