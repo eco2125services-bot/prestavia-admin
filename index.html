@@ -456,6 +456,7 @@ formLogin.addEventListener("submit", function(e){
 });
 
 function forceLogout(message){
+  clearTimeout(inactivityTimer);
   state.token = null; state.usuario = null;
   try{ sessionStorage.removeItem("pva-token"); sessionStorage.removeItem("pva-user"); }catch(e){}
   document.getElementById("app").hidden = true;
@@ -504,7 +505,22 @@ function bootApp(){
   document.getElementById("sideName").textContent = state.usuario.nombreLegal || state.usuario.email;
   document.getElementById("avatarInit").textContent = initials(state.usuario.nombreLegal).toUpperCase();
   goToView("resumen");
+  resetInactivityTimer();
 }
+
+/* ---------- cierre de sesión automático por inactividad (5 min) ---------- */
+var INACTIVITY_LIMIT_MS = 5 * 60 * 1000;
+var inactivityTimer = null;
+function resetInactivityTimer(){
+  if(!state.token) return;
+  clearTimeout(inactivityTimer);
+  inactivityTimer = setTimeout(function(){
+    forceLogout("Sesión cerrada automáticamente por inactividad (5 minutos).");
+  }, INACTIVITY_LIMIT_MS);
+}
+["mousemove","keydown","click","scroll","touchstart"].forEach(function(evt){
+  document.addEventListener(evt, resetInactivityTimer, { passive: true });
+});
 
 /* ===================== RESUMEN ===================== */
 loaders.resumen = function(){
@@ -834,15 +850,35 @@ loaders.contratos = function(){
 function descargarDocumento(path, btn){
   if(!path){ toast("err","Este documento no está disponible."); return; }
   btn.disabled = true;
+  // Se abre la pestaña INMEDIATAMENTE (de forma síncrona, dentro del click)
+  // para que el bloqueador de pop-ups del navegador no la bloquee; luego,
+  // cuando el PDF llega del backend, se redirige esa misma pestaña al blob.
+  // (Abrir la pestaña DESPUÉS del fetch, como estaba antes, hacía que el
+  // navegador tratara la apertura como un pop-up no solicitado y la bloqueara
+  // en silencio — por eso no pasaba nada visible al hacer clic.)
+  var ventana = window.open("", "_blank");
+  if(ventana && ventana.document){
+    ventana.document.write("<title>Cargando documento…</title><body style=\"font-family:sans-serif;padding:40px;color:#555\">Cargando documento…</body>");
+  }
   fetch(API_BASE + path, { headers: { "Authorization": "Bearer " + state.token } }).then(function(res){
     if(!res.ok){ throw new Error("status " + res.status); }
     return res.blob();
   }).then(function(blob){
     var url = URL.createObjectURL(blob);
-    window.open(url, "_blank");
+    if(ventana && !ventana.closed){
+      ventana.location = url;
+    } else {
+      // El navegador bloqueó incluso la ventana vacía (pop-ups desactivados
+      // del todo): como respaldo, se fuerza la descarga con un enlace oculto.
+      var a = document.createElement("a");
+      a.href = url; a.download = "";
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      toast("ok", "Tu navegador bloqueó la pestaña nueva; el documento se descargó en su lugar.");
+    }
     setTimeout(function(){ URL.revokeObjectURL(url); }, 30000);
     btn.disabled = false;
   }).catch(function(){
+    if(ventana && !ventana.closed){ try{ ventana.close(); }catch(e){} }
     toast("err","No se pudo descargar el documento.");
     btn.disabled = false;
   });
