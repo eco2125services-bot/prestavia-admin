@@ -188,6 +188,7 @@ td.wrap-cell{white-space:normal;max-width:220px;}
       <li><button data-view="operaciones">Operaciones</button></li>
       <li><button data-view="contratos">Contratos</button></li>
       <li><button data-view="indicadores">Ingresos e indicadores</button></li>
+      <li><button data-view="reportes">Suscripciones y pagos</button></li>
       <li><button data-view="mantenimiento">Mantenimiento</button></li>
     </ul>
     <div class="sidebar-foot">
@@ -299,6 +300,19 @@ td.wrap-cell{white-space:normal;max-width:220px;}
         </div>
       </section>
 
+      <!-- REPORTES: suscripciones de prestamistas y pagos realizados -->
+      <section class="view" id="view-reportes">
+        <div class="view-head"><p>Suscripciones activas por prestamista (tipo, estatus, vencimiento) y un reporte de pagos ya validados / préstamos terminados por usuario.</p></div>
+        <div class="card">
+          <div class="card-head"><h3>Prestamistas — suscripción y pagos</h3><div class="sub">Tipo de plan, si está vigente o por vencer, comisiones pagadas y préstamos ya cerrados</div></div>
+          <div class="card-body pad0"><div class="table-wrap" id="tablaReportePrestamistas"></div></div>
+        </div>
+        <div class="card">
+          <div class="card-head"><h3>Prestatarios — pagos y préstamos terminados</h3><div class="sub">Cuotas validadas, monto total pagado, préstamos pagados por completo y cuotas en mora</div></div>
+          <div class="card-body pad0"><div class="table-wrap" id="tablaReportePrestatarios"></div></div>
+        </div>
+      </section>
+
       <!-- MANTENIMIENTO -->
       <section class="view" id="view-mantenimiento">
         <div class="view-head"><p>El cron diario (vencimientos de suscripción y mora) corre solo en Render todos los días. Desde aquí puedes forzar una corrida sin esperar al horario.</p></div>
@@ -395,9 +409,9 @@ function escapeHtml(s){
   });
 }
 
-var GOOD_STATES = {"Financiada":1,"Por_Desembolsar":1,"En_Cobro":1,"Pagada":1,"Activo":1,"Aprobado":1,"Validado":1,"Liberada":1,"Vigente":1,"Validado_IA":1};
-var WARN_STATES = {"Pendiente":1,"Abierta":1,"En Negociacion":1};
-var DANGER_STATES = {"Rechazada":1,"Vencido":1,"Rechazado":1,"Cancelado":1};
+var GOOD_STATES = {"Financiada":1,"Por_Desembolsar":1,"En_Cobro":1,"Pagada":1,"Activo":1,"Aprobado":1,"Validado":1,"Liberada":1,"Vigente":1,"Validado_IA":1,"Activa":1};
+var WARN_STATES = {"Pendiente":1,"Abierta":1,"En Negociacion":1,"Por_Vencer":1,"Sin_Suscripcion":1};
+var DANGER_STATES = {"Rechazada":1,"Vencido":1,"Rechazado":1,"Cancelado":1,"Vencida":1};
 function chip(status){
   var cls = "muted";
   if(GOOD_STATES[status]) cls = "ok";
@@ -471,7 +485,7 @@ var viewTitles = {
   resumen:"Resumen", usuarios:"Usuarios", prestamistas:"Activación de prestamistas",
   comisiones:"Comisiones pendientes", desembolsos:"Desembolsos", pagos:"Cuotas reportadas",
   operaciones:"Operaciones", contratos:"Bóveda de contratos", indicadores:"Ingresos e indicadores",
-  mantenimiento:"Mantenimiento"
+  reportes:"Suscripciones y pagos", mantenimiento:"Mantenimiento"
 };
 var loaders = {}; // view -> function to (re)load data
 
@@ -608,6 +622,62 @@ function cargarUsuarios(rol){
     tabla.querySelectorAll("[data-edit]").forEach(function(b){
       b.addEventListener("click", function(){ abrirEdicionUsuario(b.getAttribute("data-edit")); });
     });
+  }).catch(function(){ tabla.innerHTML = '<div class="empty-state">No se pudo conectar.</div>'; });
+}
+
+/* ---------- reportes: suscripciones y pagos ---------- */
+loaders.reportes = function(){ cargarReportePrestamistas(); cargarReportePrestatarios(); };
+
+function cargarReportePrestamistas(){
+  var tabla = document.getElementById("tablaReportePrestamistas");
+  tabla.innerHTML = '<div class="empty-state">Cargando…</div>';
+  apiFetch("/admin/reportes/prestamistas").then(function(r){
+    if(!(r.data && r.data.exito)){ tabla.innerHTML = '<div class="empty-state">'+friendlyError(r.data)+'</div>'; return; }
+    var rows = r.data.datos || [];
+    if(rows.length === 0){ tabla.innerHTML = '<div class="empty-state">Sin prestamistas registrados.</div>'; return; }
+    var html = "<table><thead><tr><th>Nombre</th><th>Correo</th><th>Plan</th><th>Vencimiento</th><th>Estatus</th>" +
+      "<th class=\"num\">Reputación</th><th class=\"num\">Comisiones pagadas</th><th class=\"num\">Total comisiones</th><th class=\"num\">Préstamos terminados</th></tr></thead><tbody>";
+    rows.forEach(function(p){
+      var venc = p.fechaFinPlan ? dateFmt(p.fechaFinPlan) + (p.diasParaVencer !== null && p.diasParaVencer >= 0 ? " (" + p.diasParaVencer + "d)" : "") : "—";
+      html += "<tr>" +
+        "<td>"+escapeHtml(p.nombre)+"</td>" +
+        "<td>"+escapeHtml(p.email)+"</td>" +
+        "<td>"+escapeHtml(p.planSuscripcion||"—")+"</td>" +
+        "<td>"+venc+"</td>" +
+        "<td>"+chip(p.estatusRenovacion)+"</td>" +
+        "<td class=\"num\">"+p.puntosReputacion+"</td>" +
+        "<td class=\"num\">"+p.comisionesPagadas+"</td>" +
+        "<td class=\"num\">"+money(p.totalComisionesPagadas)+"</td>" +
+        "<td class=\"num\">"+p.prestamosTerminados+"</td>" +
+        "</tr>";
+    });
+    html += "</tbody></table>";
+    tabla.innerHTML = html;
+  }).catch(function(){ tabla.innerHTML = '<div class="empty-state">No se pudo conectar.</div>'; });
+}
+
+function cargarReportePrestatarios(){
+  var tabla = document.getElementById("tablaReportePrestatarios");
+  tabla.innerHTML = '<div class="empty-state">Cargando…</div>';
+  apiFetch("/admin/reportes/prestatarios").then(function(r){
+    if(!(r.data && r.data.exito)){ tabla.innerHTML = '<div class="empty-state">'+friendlyError(r.data)+'</div>'; return; }
+    var rows = r.data.datos || [];
+    if(rows.length === 0){ tabla.innerHTML = '<div class="empty-state">Sin prestatarios registrados.</div>'; return; }
+    var html = "<table><thead><tr><th>Nombre</th><th>Correo</th><th class=\"num\">Reputación</th>" +
+      "<th class=\"num\">Cuotas pagadas</th><th class=\"num\">Total pagado</th><th class=\"num\">Préstamos terminados</th><th class=\"num\">Cuotas en mora</th></tr></thead><tbody>";
+    rows.forEach(function(p){
+      html += "<tr>" +
+        "<td>"+escapeHtml(p.nombre)+"</td>" +
+        "<td>"+escapeHtml(p.email)+"</td>" +
+        "<td class=\"num\">"+p.puntosReputacion+"</td>" +
+        "<td class=\"num\">"+p.cuotasPagadas+"</td>" +
+        "<td class=\"num\">"+money(p.totalPagado)+"</td>" +
+        "<td class=\"num\">"+p.prestamosTerminados+"</td>" +
+        "<td class=\"num\">"+(p.cuotasEnMora > 0 ? ("<span class=\"chip danger\">"+p.cuotasEnMora+"</span>") : "0")+"</td>" +
+        "</tr>";
+    });
+    html += "</tbody></table>";
+    tabla.innerHTML = html;
   }).catch(function(){ tabla.innerHTML = '<div class="empty-state">No se pudo conectar.</div>'; });
 }
 
